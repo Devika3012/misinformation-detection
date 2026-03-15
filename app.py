@@ -6,6 +6,8 @@ from PIL import Image
 from model import MultimodalModel
 import base64
 import plotly.graph_objects as go
+import os
+import gdown
 
 # ----------------------------
 # PAGE CONFIG
@@ -110,14 +112,25 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ----------------------------
-# LOAD MODEL
+# MODEL DOWNLOAD + LOAD
 # ----------------------------
+
+MODEL_PATH = "models/model.pt"
+MODEL_URL = "https://drive.google.com/uc?id=1MqiW4QxHVsf_YP5nvwQ5TzJFhqemARAz"
 
 @st.cache_resource
 def load_model():
 
+    if not os.path.exists(MODEL_PATH):
+
+        os.makedirs("models", exist_ok=True)
+
+        st.info("Downloading AI model... (first run only)")
+
+        gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
+
     model = MultimodalModel()
-    model.load_state_dict(torch.load("models/model.pt", map_location="cpu"))
+    model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
     model.eval()
 
     return model
@@ -162,7 +175,6 @@ if analyze:
         input_ids=None
         attention_mask=None
 
-        # TEXT
         if text_input!="":
 
             tokens=tokenizer(
@@ -175,7 +187,6 @@ if analyze:
             input_ids=tokens["input_ids"]
             attention_mask=tokens["attention_mask"]
 
-        # IMAGE
         if uploaded_image:
 
             image=Image.open(uploaded_image).convert("RGB")
@@ -207,7 +218,7 @@ if analyze:
         ]
 
 # ----------------------------
-# MODERN TRANSPARENT GAUGE
+# GAUGE
 # ----------------------------
 
         fig = go.Figure(go.Indicator(
@@ -234,10 +245,6 @@ if analyze:
         )
 
         st.plotly_chart(fig,use_container_width=True)
-
-# ----------------------------
-# PREDICTION TEXT
-# ----------------------------
 
         st.markdown(f"""
 ### Prediction  
@@ -275,10 +282,6 @@ if analyze:
 
             recommendation="Avoid trusting or sharing this information without verification."
 
-# ----------------------------
-# ANALYSIS CARDS
-# ----------------------------
-
         st.markdown("## Analysis Report")
 
         col1,col2,col3 = st.columns(3)
@@ -287,11 +290,8 @@ if analyze:
 
             st.markdown(f"""
             <div class="card">
-
             <h4 style="color:white">Risk Level</h4>
-
             <h2 style="color:{risk_color}">{risk}</h2>
-
             </div>
             """, unsafe_allow_html=True)
 
@@ -299,11 +299,8 @@ if analyze:
 
             st.markdown(f"""
             <div class="card">
-
             <h4 style="color:white">Explanation</h4>
-
             <p style="color:#ddd">{explanation}</p>
-
             </div>
             """, unsafe_allow_html=True)
 
@@ -311,20 +308,12 @@ if analyze:
 
             st.markdown(f"""
             <div class="card">
-
             <h4 style="color:white">Recommendation</h4>
-
             <p style="color:#ddd">{recommendation}</p>
-
             </div>
             """, unsafe_allow_html=True)
-
-# ----------------------------
-# IMAGE DISPLAY
-# ----------------------------
 
         if uploaded_image:
 
             st.subheader("Uploaded Image")
-
             st.image(image,use_column_width=True)
