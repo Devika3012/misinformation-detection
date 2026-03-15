@@ -6,8 +6,6 @@ from PIL import Image
 from model import MultimodalModel
 import base64
 import plotly.graph_objects as go
-import os
-import gdown
 
 # ----------------------------
 # PAGE CONFIG
@@ -20,7 +18,7 @@ st.set_page_config(
 )
 
 # ----------------------------
-# BACKGROUND IMAGE (.jpg)
+# BACKGROUND IMAGE
 # ----------------------------
 
 def get_base64(file):
@@ -112,25 +110,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ----------------------------
-# MODEL DOWNLOAD + LOAD
+# LOAD MODEL
 # ----------------------------
-
-MODEL_PATH = "models/model.pt"
-MODEL_URL = "https://drive.google.com/uc?id=1MqiW4QxHVsf_YP5nvwQ5TzJFhqemARAz"
 
 @st.cache_resource
 def load_model():
 
-    if not os.path.exists(MODEL_PATH):
-
-        os.makedirs("models", exist_ok=True)
-
-        st.info("Downloading AI model... (first run only)")
-
-        gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
-
     model = MultimodalModel()
-    model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
+    model.load_state_dict(torch.load("models/model.pt", map_location="cpu"))
     model.eval()
 
     return model
@@ -171,54 +158,67 @@ if analyze:
 
     else:
 
-        image_tensor=None
-        input_ids=None
-        attention_mask=None
+        # TEXT PROCESSING
+        if text_input != "":
 
-        if text_input!="":
-
-            tokens=tokenizer(
+            tokens = tokenizer(
                 text_input,
                 return_tensors="pt",
                 truncation=True,
-                padding=True
+                padding=True,
+                max_length=128
             )
 
-            input_ids=tokens["input_ids"]
-            attention_mask=tokens["attention_mask"]
+            input_ids = tokens["input_ids"]
+            attention_mask = tokens["attention_mask"]
 
+        else:
+            input_ids = None
+            attention_mask = None
+
+
+        # IMAGE PROCESSING
         if uploaded_image:
 
-            image=Image.open(uploaded_image).convert("RGB")
-            image_tensor=transform(image).unsqueeze(0)
+            image = Image.open(uploaded_image).convert("RGB")
+            image_tensor = transform(image).unsqueeze(0)
 
+        else:
+            image_tensor = None
+
+
+        # If only one modality exists, create minimal tensor for the other
         if image_tensor is None:
-            image_tensor=torch.zeros((1,3,224,224))
+            image_tensor = torch.zeros((1,3,224,224))
 
         if input_ids is None:
-            input_ids=torch.zeros((1,10),dtype=torch.long)
-            attention_mask=torch.zeros((1,10),dtype=torch.long)
+            input_ids = torch.zeros((1,10),dtype=torch.long)
+            attention_mask = torch.zeros((1,10),dtype=torch.long)
+
 
         with torch.no_grad():
 
-            outputs=model(input_ids,attention_mask,image_tensor)
+            outputs = model(input_ids, attention_mask, image_tensor)
 
-            probs=torch.softmax(outputs,dim=1)
+            probs = torch.softmax(outputs, dim=1)
 
-        pred=torch.argmax(probs).item()
 
-        confidence=torch.max(probs).item()
+        pred = torch.argmax(probs).item()
 
-        confidence_percent=confidence*100
+        confidence = torch.max(probs).item()
 
-        labels=[
+        confidence_percent = confidence * 100
+
+
+        labels = [
             "True Information",
             "Mixed / Uncertain",
             "False / Misinformation"
         ]
 
+
 # ----------------------------
-# GAUGE
+# MODERN GAUGE
 # ----------------------------
 
         fig = go.Figure(go.Indicator(
@@ -246,10 +246,16 @@ if analyze:
 
         st.plotly_chart(fig,use_container_width=True)
 
+
+# ----------------------------
+# PREDICTION TEXT
+# ----------------------------
+
         st.markdown(f"""
 ### Prediction  
 **{labels[pred]}**
 """)
+
 
 # ----------------------------
 # RISK LOGIC
@@ -282,6 +288,11 @@ if analyze:
 
             recommendation="Avoid trusting or sharing this information without verification."
 
+
+# ----------------------------
+# ANALYSIS CARDS
+# ----------------------------
+
         st.markdown("## Analysis Report")
 
         col1,col2,col3 = st.columns(3)
@@ -313,7 +324,13 @@ if analyze:
             </div>
             """, unsafe_allow_html=True)
 
+
+# ----------------------------
+# IMAGE DISPLAY
+# ----------------------------
+
         if uploaded_image:
 
             st.subheader("Uploaded Image")
+
             st.image(image,use_column_width=True)
