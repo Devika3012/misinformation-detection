@@ -122,7 +122,6 @@ def load_model():
 
     return model
 
-
 model = load_model()
 
 tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -147,6 +146,21 @@ analyze = st.button("Analyze Misinformation")
 st.markdown('</div>', unsafe_allow_html=True)
 
 # ----------------------------
+# KEYWORD RISK DETECTION
+# ----------------------------
+
+danger_keywords = [
+    "vaccine", "covid", "cancer cure", "miracle cure",
+    "infertility", "secret cure", "pharmaceutical conspiracy",
+    "100% cure", "guaranteed cure", "government hiding"
+]
+
+credible_keywords = [
+    "who report", "official report", "research study",
+    "university study", "scientists say"
+]
+
+# ----------------------------
 # PREDICTION
 # ----------------------------
 
@@ -158,7 +172,7 @@ if analyze:
 
     else:
 
-        # TEXT PROCESSING
+        # TEXT
         if text_input != "":
 
             tokens = tokenizer(
@@ -173,42 +187,45 @@ if analyze:
             attention_mask = tokens["attention_mask"]
 
         else:
-            input_ids = None
-            attention_mask = None
 
+            input_ids = torch.zeros((1,10),dtype=torch.long)
+            attention_mask = torch.zeros((1,10),dtype=torch.long)
 
-        # IMAGE PROCESSING
+        # IMAGE
         if uploaded_image:
 
             image = Image.open(uploaded_image).convert("RGB")
             image_tensor = transform(image).unsqueeze(0)
 
         else:
-            image_tensor = None
 
-
-        # If only one modality exists, create minimal tensor for the other
-        if image_tensor is None:
             image_tensor = torch.zeros((1,3,224,224))
 
-        if input_ids is None:
-            input_ids = torch.zeros((1,10),dtype=torch.long)
-            attention_mask = torch.zeros((1,10),dtype=torch.long)
-
-
+        # MODEL
         with torch.no_grad():
 
             outputs = model(input_ids, attention_mask, image_tensor)
-
             probs = torch.softmax(outputs, dim=1)
 
+        probs = probs.squeeze().tolist()
 
-        pred = torch.argmax(probs).item()
+        # ----------------------------
+        # RULE ADJUSTMENT
+        # ----------------------------
 
-        confidence = torch.max(probs).item()
+        text_lower = text_input.lower()
 
+        if any(word in text_lower for word in danger_keywords):
+
+            probs = [0.10, 0.20, 0.70]
+
+        elif any(word in text_lower for word in credible_keywords):
+
+            probs = [0.70, 0.20, 0.10]
+
+        pred = probs.index(max(probs))
+        confidence = max(probs)
         confidence_percent = confidence * 100
-
 
         labels = [
             "True Information",
@@ -216,9 +233,8 @@ if analyze:
             "False / Misinformation"
         ]
 
-
 # ----------------------------
-# MODERN GAUGE
+# GAUGE
 # ----------------------------
 
         fig = go.Figure(go.Indicator(
@@ -230,12 +246,7 @@ if analyze:
                 'axis': {'range':[0,100]},
                 'bar': {'color':"#ff4040"},
                 'bgcolor': "rgba(0,0,0,0)",
-                'borderwidth':0,
-                'steps':[
-                    {'range':[0,40],'color':'rgba(255,255,255,0.1)'},
-                    {'range':[40,70],'color':'rgba(255,255,255,0.2)'},
-                    {'range':[70,100],'color':'rgba(255,255,255,0.3)'}
-                ]
+                'borderwidth':0
             }
         ))
 
@@ -246,16 +257,14 @@ if analyze:
 
         st.plotly_chart(fig,use_container_width=True)
 
-
 # ----------------------------
-# PREDICTION TEXT
+# PREDICTION
 # ----------------------------
 
         st.markdown(f"""
 ### Prediction  
 **{labels[pred]}**
 """)
-
 
 # ----------------------------
 # RISK LOGIC
@@ -266,31 +275,30 @@ if analyze:
             risk="Low Risk"
             risk_color="#2ecc71"
 
-            explanation="The model detected patterns consistent with verified factual information."
+            explanation="The system detected patterns associated with verified factual information."
 
-            recommendation="Information appears credible, but always verify with trusted sources."
+            recommendation="Information appears credible, but still verify from trusted sources."
 
         elif confidence_percent < 70:
 
             risk="Moderate Risk"
             risk_color="#f1c40f"
 
-            explanation="The content contains ambiguous signals that may indicate misleading information."
+            explanation="The claim contains ambiguous patterns that may indicate misleading information."
 
-            recommendation="Cross-check this claim using trusted fact-check websites."
+            recommendation="Verify this claim using reliable fact-check websites."
 
         else:
 
             risk="High Risk"
             risk_color="#e74c3c"
 
-            explanation="The model detected patterns commonly associated with misinformation."
+            explanation="The system detected patterns commonly associated with misinformation."
 
-            recommendation="Avoid trusting or sharing this information without verification."
-
+            recommendation="Avoid trusting or sharing this claim without verification."
 
 # ----------------------------
-# ANALYSIS CARDS
+# CARDS
 # ----------------------------
 
         st.markdown("## Analysis Report")
@@ -324,7 +332,6 @@ if analyze:
             </div>
             """, unsafe_allow_html=True)
 
-
 # ----------------------------
 # IMAGE DISPLAY
 # ----------------------------
@@ -332,5 +339,4 @@ if analyze:
         if uploaded_image:
 
             st.subheader("Uploaded Image")
-
             st.image(image,use_column_width=True)
